@@ -1,6 +1,11 @@
 #include <iostream>
 #include <cstdint>
 #include "disk.h"
+#include <cstring>
+#include <fstream>
+#include <vector>
+#include <algorithm>
+#include <string>
 
 #ifndef __FS_H__
 #define __FS_H__
@@ -16,10 +21,17 @@
 #define WRITE 0x02
 #define EXECUTE 0x01
 
+// Define constants
+#define BLOCK_SIZE 4096  // 4 KB blocks
+#define MAX_BLOCKS 2048  // Maximum number of blocks
+
+// Define FAT entry type
+using FATEntry = uint16_t;
+
 struct dir_entry {
     char file_name[56]; // name of the file / sub-directory
     uint32_t size; // size of the file in bytes
-    uint16_t first_blk; // index in the FAT for the first block of the file
+    FATEntry first_blk; // index in the FAT for the first block of the file
     uint8_t type; // directory (1) or file (0)
     uint8_t access_rights; // read (0x04), write (0x02), execute (0x01)
 };
@@ -28,9 +40,17 @@ class FS {
 private:
     Disk disk;
     // size of a FAT entry is 2 bytes
-    int16_t fat[BLOCK_SIZE/2];
+    FATEntry fat[MAX_BLOCKS]; // FAT table
+    //working directory
+    FATEntry currentDir;
+        //Helpers
+    bool readBlock(size_t blockNum, void* buffer);
+    bool writeBlock(size_t blockNum, const void* buffer);
+    std::vector<FATEntry> freeFATEntries(uint8_t size);
 
 public:
+    dir_entry find_dir_block(const std::string &filepath);
+    //assigment funks
     FS();
     ~FS();
     // formats the disk, i.e., creates an empty file system
