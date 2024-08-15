@@ -1,4 +1,3 @@
-#include <iostream>
 #include <cstdint>
 #include "disk.h"
 #include <cstring>
@@ -13,7 +12,7 @@
 #define ROOT_BLOCK 0
 #define FAT_BLOCK 1
 #define FAT_FREE 0
-#define FAT_EOF -1
+#define FAT_EOF 65535 // 0xFFFF, end of file marker in FAT table (Since uint16_t cannot represent -1)
 
 #define TYPE_FILE 0
 #define TYPE_DIR 1
@@ -47,6 +46,9 @@ private:
     bool readBlock(size_t blockNum, void* buffer);
     bool writeBlock(size_t blockNum, const void* buffer);
     std::vector<FATEntry> freeFATEntries(uint8_t size);
+    bool findDirEntry(dir_entry* dirTable, dir_entry& destEntry, const std::string& dirpath);
+    int mv_dir(const std::string& sourcepath, const std::string& destpath, dir_entry* dir);
+    int mv_file(const std::string& sourcepath, const std::string& destpath, dir_entry* dir);
 
 public:
     dir_entry find_dir_block(const std::string &filepath);
