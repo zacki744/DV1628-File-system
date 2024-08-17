@@ -53,6 +53,7 @@ private:
     int mvFile(const std::string& sourcepath, const std::string& destpath, dir_entry* dir);
     void writePagesToFat(const size_t totalSize, const std::string content, const std::vector<FATEntry> freeEntries);
     bool createDirEntry(dir_entry* dirEntries, dir_entry*& newEntry, const std::string& fileName);
+    std::string accessRightsToString(uint8_t accessRights);
 
 public:
     //assigment funks
