@@ -48,6 +48,7 @@ int FS::findDirEntry(dir_entry* dirTable, dir_entry& NewEntry, const std::string
     return 0;
 }
 
+
 bool FS::readBlock(size_t blockNum, void* buffer) {
     uint8_t blk[BLOCK_SIZE];
     if (disk.read(blockNum, blk) == 0) {
@@ -86,7 +87,7 @@ std::vector<FATEntry> FS::freeFATEntries(uint8_t size) {
 //System funktions
 FS::FS()
 {
-    std::cout << "FS::FS()... Creating file system\n";
+    format();
 }
 
 FS::~FS()
@@ -306,26 +307,24 @@ FS::cp(std::string sourcepath, std::string destpath) //currently only working in
     newEntry->first_blk = freeEntries[0];
     newEntry->size = sourceEntry.size;
     newEntry->type = TYPE_FILE;
-    newEntry->access_rights = sourceEntry.access_rights;
-    printf("file content: %s\n", file1Content.c_str());
-    
+    newEntry->access_rights = sourceEntry.access_rights;    
     writePagesToFat(sourceEntry.size, file1Content, freeEntries);
     writeBlock(this->currentDir, dirEntries);
     return 0;
 }
 
-int FS::mvDir(const std::string& sourcepath, const std::string& destpath, dir_entry* dir, dir_entry* destEntry) {
+int FS::mvDir(const std::string& sourcepath, const std::string& destpath, dir_entry* dir, uint16_t index) {
     // find sorce file
-    ls();
     dir_entry sourceEntry;
-    if(!findDirEntry(dir, sourceEntry, sourcepath)) {
+    uint16_t sourceIndex = findDirEntry(dir, sourceEntry, sourcepath);
+    if (sourceIndex == 0) {
         std::cerr << "Error: Source file not found.\n";
         return -1;
     }
     
     //get the dest dir block
     uint8_t block[BLOCK_SIZE] = { 0 };
-    readBlock(destEntry->first_blk, block);
+    readBlock(dir[index].first_blk, block);
     dir_entry* destDir = reinterpret_cast<dir_entry*>(block);
 
     // find free space in the dest dir
@@ -342,25 +341,20 @@ int FS::mvDir(const std::string& sourcepath, const std::string& destpath, dir_en
     newEntry->access_rights = sourceEntry.access_rights;    
 
     // write to disk for the dir table
-    if((writeBlock(destEntry->first_blk, destDir) && writeBlock(this->currentDir, dir)) == 1)
-            std::memset(&sourceEntry, 0, sizeof(dir_entry));
-
-     // remove the file dir from the old destination
-    return 0;
+    std::memset(&dir[sourceIndex], 0, sizeof(dir_entry));
+    if((writeBlock(dir[index].first_blk, destDir) && writeBlock(this->currentDir, dir)) == 1) {
+        return 0;
+    }
+    return -1;
 }
 
 int FS::mvFile(const std::string &sourcepath, const std::string &destpath, dir_entry* dir) {
     // Find the source file
     dir_entry sourceEntry;
     int dirEntryIndex = findDirEntry(dir, sourceEntry, sourcepath);
-    std::cout << "Source file found\n";
-    std::cout << "Source file name: " << dir[dirEntryIndex].file_name << std::endl;
-    std::cout << "destpath: " << destpath << std::endl;
     // change name to dest filename
     std::strncpy(dir[dirEntryIndex].file_name, destpath.c_str(), sizeof(sourceEntry.file_name) - 1);
     // write to disk for the dir table
-    std::cout << "Writing to disk\n";
-    std::cout << "New Source file name: " << sourceEntry.file_name << std::endl;
     writeBlock(this->currentDir, dir);
     return 0;
 }
@@ -377,12 +371,11 @@ FS::mv(std::string sourcepath, std::string destpath)
 
     //is detination a directory?
     dir_entry destEntry;
-    if (findDirEntry(dirEntries, destEntry, destpath)) {
-        if(destEntry.type == TYPE_FILE) {
-            std::cerr << "Error: Destination is not a directory.\n";
-            return -1;
-        }
-        return mvDir(sourcepath, destpath, dirEntries, &destEntry);
+    uint16_t destIndex = findDirEntry(dirEntries, destEntry, destpath);
+    if (dirEntries[destIndex].type == TYPE_DIR) {
+        //move file to dir
+        std::cout << "Moving file to dir\n";
+        return mvDir(sourcepath, destpath, dirEntries, destIndex);
     } else {
         //move file to file
         std::cout << "Moving file to file\n";
@@ -433,7 +426,6 @@ FS::rm(std::string filepath)
         writeBlock(fileEntries[i], block);
         fat[fileEntries[i]] = FAT_FREE;
     }
-    printf("done clearing file content\n");
     // Step 5: Remove the directory entry
     std::memset(&dirEntries[fileEntry], 0, sizeof(dir_entry));
 
@@ -445,71 +437,88 @@ FS::rm(std::string filepath)
 
 // append <filepath1> <filepath2> appends the contents of file <filepath1> to
 // the end of file <filepath2>. The file <filepath1> is unchanged.
-int
-FS::append(std::string filepath1, std::string filepath2)
-{
-    std::cout << "FS::append(" << filepath1 << "," << filepath2 << ")\n";
-    // Find the current dirrectory table
+int FS::append(std::string filepath1, std::string filepath2) {
+
+    // Find the current directory block
     uint8_t block[BLOCK_SIZE] = { 0 };
     readBlock(this->currentDir, block);
     dir_entry* dirEntries = reinterpret_cast<dir_entry*>(block);
 
-    // Find the File 1
-    dir_entry *File1;
-    if(!findDirEntry(dirEntries, *File1, filepath1)) {
+    // Find the source file
+    dir_entry sourceEntry;
+    if (!findDirEntry(dirEntries, sourceEntry, filepath1)) {
         std::cerr << "Error: Source file not found.\n";
         return -1;
     }
-    // Find file 2
-    dir_entry *File2;
-    if(!findDirEntry(dirEntries, *File2, filepath2)) {
-        std::cerr << "Error: Source file not found.\n";
+    // Read the source file content
+    std::string content = "";
+    uint8_t srcBlock[BLOCK_SIZE] = { 0 };
+    for (auto i = sourceEntry.first_blk; i != EOF && i != FAT_EOF; i = fat[i]) {
+        readBlock(i, srcBlock);
+        content += reinterpret_cast<char*>(srcBlock);
+    }
+    // Find free FAT entries for the file
+    std::vector<FATEntry> freeEntries = freeFATEntries(((content.length() + BLOCK_SIZE - 1) / BLOCK_SIZE));
+    if (freeEntries.size() < ((content.length() + BLOCK_SIZE - 1) / BLOCK_SIZE)) {
+        std::cerr << "Error: Not enough free blocks available.\n";
         return -1;
+    }
+    // find destination file, with id as well fore better write to memory
+    dir_entry destEntry;
+    uint16_t destIndex = findDirEntry(dirEntries, destEntry, filepath2);
+    if (destIndex == 0) {
+        // Destination file not found
+        //create new dest file in current working dir, only have name and type
+        dir_entry* newEntry = nullptr;
+        if (!createDirEntry(dirEntries, newEntry, filepath2)) {
+            std::cerr << "Error: Could not create new file entry.\n";
+            return -1;
+        }
+        newEntry->first_blk = freeEntries[0];
+        newEntry->size = 0;
+        newEntry->type = TYPE_FILE;
+        newEntry->access_rights = sourceEntry.access_rights;
+        std::strncpy(newEntry->file_name, filepath2.c_str(), sizeof(newEntry->file_name) - 1);
+        newEntry->file_name[sizeof(newEntry->file_name) - 1] = '\0'; // Null-terminate
+
+        // Write the updated current directory block to disk
+        writeBlock(this->currentDir, block);
+        // update the dicEntry list in memory
+        readBlock(this->currentDir, block);
+        dirEntries = reinterpret_cast<dir_entry*>(block);
+        destIndex = findDirEntry(dirEntries, destEntry, filepath2);
     }
     // Check if the file is a file
-    if (File1->type != TYPE_FILE || File2->type != TYPE_FILE) {
+    if (dirEntries[destIndex].type != TYPE_FILE) {
         std::cerr << "Error: Not a file.\n";
         return -1;
     }
-    // Check if file 1 has rw and file 2 has r permision
-    if ((File2->access_rights & READ) == 0 || (File2->access_rights & WRITE) == 0 || (File1->access_rights & READ) == 0) {
+    // Check if file has rw permision
+    if ((dirEntries[destIndex].access_rights & READ) == 0 || (dirEntries[destIndex].access_rights & WRITE) == 0) {
         std::cerr << "Error: No read/write permission.\n";
         return -1;
     }
-
-    // Find and copy file 1 to temp variables, then determine the size of the new file
-    std::vector<FATEntry> file1files;
-    FATEntry j = File1->first_blk;
-    for (auto i = File1->first_blk; i != EOF && i != FAT_EOF; i = fat[i]) {
-        file1files.push_back(i);
+    // recalkulate the size of the file
+    dirEntries[destIndex].size += content.length();
+    // write the pages to memory
+    writePagesToFat(content.length(), content, freeEntries);
+    //konekt the page chains
+    if(freeEntries[0] == dirEntries[destIndex].first_blk) {
+        // write to disk for the dir table
+        writeBlock(this->currentDir, dirEntries);
+        writeBlock(FAT_BLOCK, fat);
+        return 0;
     }
-    // Find free FAT entries for the file
-    std::vector<FATEntry> freeEntries = freeFATEntries(file1files.size());
-    if (freeEntries.size() < file1files.size()) {
-        std::cerr << "Error: Not enough free blocks available.\n";
-        return -1;
-    }   
-    // Copy the file content
-    for (size_t i = 0; i < file1files.size(); ++i) {
-        uint8_t block[BLOCK_SIZE] = { 0 };
-        readBlock(j, block);
-        writeBlock(freeEntries[i], block);
-        if (i < file1files.size() - 1) {
-            fat[freeEntries[i]] = freeEntries[i + 1];
-        } else {
-            fat[freeEntries[i]] = FAT_EOF;
-        }
-        j = fat[j];
+    // find the last block in the file
+    uint16_t lastBlock = dirEntries[destIndex].first_blk;
+    while (fat[lastBlock] != FAT_EOF) {
+        lastBlock = fat[lastBlock];
     }
-    // Update last entry in file 2 to point to the first copied entrys
-    FATEntry file2Walker = File2->first_blk;
-    for (auto i = j; i != EOF && i != FAT_EOF; i = fat[i]) {
-        file2Walker = i;
-    }
-    fat[file2Walker] = freeEntries[0];
-    // Update the FAT and the directory on the disk
-    writeBlock(FAT_BLOCK, fat);
+    // connect the last block to the new blocks
+    fat[lastBlock] = freeEntries[0];
+    // write to disk for the dir table
     writeBlock(this->currentDir, dirEntries);
+    writeBlock(FAT_BLOCK, fat);
     return 0;
 }
 
@@ -523,7 +532,7 @@ FS::mkdir(std::string dirpath) {
     uint8_t block[BLOCK_SIZE] = { 0 };
     uint8_t newBlock[BLOCK_SIZE] = { 0 };
     dir_entry* dirEntries = nullptr;
-    dir_entry newDir = {};
+    dir_entry* newDir = nullptr;
     dir_entry* newDirEntries = reinterpret_cast<dir_entry*>(newBlock);
 
     // Read the current directory block
@@ -535,11 +544,7 @@ FS::mkdir(std::string dirpath) {
     }
 
     // Check if the directory already exists
-    if (findDirEntry(dirEntries, newDir, dirName)) {
-        std::cerr << "Error: Directory already exists.\n";
-        return -1;
-    }
-
+    createDirEntry(dirEntries, newDir, dirName);
     // Find free disk space for the new directory
     std::vector<FATEntry> freeEntries = freeFATEntries(1);
     if (freeEntries.empty()) {
@@ -550,12 +555,12 @@ FS::mkdir(std::string dirpath) {
     uint16_t access = dirEntries[0].access_rights;
 
     // Initialize the new directory entry in the current directory
-    newDir.access_rights = access;
-    std::strncpy(newDir.file_name, dirName.c_str(), sizeof(newDir.file_name) - 1);
-    newDir.file_name[sizeof(newDir.file_name) - 1] = '\0'; // Null-terminate
-    newDir.first_blk = freeEntries[0];
-    newDir.size = 0; 
-    newDir.type = TYPE_DIR; 
+    newDir->access_rights = access;
+    std::strncpy(newDir->file_name, dirName.c_str(), sizeof(newDir->file_name) - 1);
+    newDir->file_name[sizeof(newDir->file_name) - 1] = '\0'; // Null-terminate
+    newDir->first_blk = freeEntries[0];
+    newDir->size = 0; 
+    newDir->type = TYPE_DIR;
 
     // Entry for "."
     std::strncpy(newDirEntries[0].file_name, ".", sizeof(newDirEntries[0].file_name) - 1);
@@ -579,9 +584,10 @@ FS::mkdir(std::string dirpath) {
     // Update FAT and current directory
     fat[freeEntries[0]] = FAT_EOF;
     disk.write(FAT_BLOCK, (uint8_t*)fat);
-
     // Write the updated current directory block to disk
     writeBlock(this->currentDir, (uint8_t*)dirEntries);
+    this->currentDir = freeEntries[0];
+    this->currentPath.push_back(dirName);
 
     return 0;
 }
@@ -591,48 +597,36 @@ FS::mkdir(std::string dirpath) {
 int
 FS::cd(std::string dirpath)
 {
-    // Check if the destination is the root directory
-    if (dirpath == "/") {
-        this->currentDir = ROOT_BLOCK;
-        return 0;
-    }
-    // Check if the destination is the parent directory
-    if (dirpath == "..") {
-        uint8_t block[BLOCK_SIZE] = { 0 };
-        readBlock(this->currentDir, block);
-        dir_entry* dirEntries = reinterpret_cast<dir_entry*>(block);
-        // Find the parent directory
-        dir_entry parentEntry;
-        if (!findDirEntry(dirEntries, parentEntry, "..")) {
-            return -1;
-        }
-        // Update the current directory
-        this->currentDir = parentEntry.first_blk;
-        return 0;
-    }
-    // check for multi line path
-    if (dirpath.find("/") != std::string::npos) {
-        std::cerr << "Error: Multi-level path not supported.\n";
-        return -1;
-    }
-
-    //get the current directory
+    // Read the current directory block
     uint8_t block[BLOCK_SIZE] = { 0 };
     readBlock(this->currentDir, block);
     dir_entry* dirEntries = reinterpret_cast<dir_entry*>(block);
-    // Find destination directory
-    dir_entry destEntry;
-    if (!findDirEntry(dirEntries, destEntry, dirpath)) {
+
+    // Find the directory entry
+    dir_entry targetEntry;
+    if (!findDirEntry(dirEntries, targetEntry, dirpath)) {
+        std::cerr << "Error: Directory not found.\n";
         return -1;
     }
-    // Check if the destination is a directory
-    if (destEntry.type != TYPE_DIR) {
+
+    // Check if the entry is a directory
+    if (targetEntry.type != TYPE_DIR) {
         std::cerr << "Error: Not a directory.\n";
         return -1;
     }
-    // Update the current directory
-    this->currentDir = destEntry.first_blk;
-    // update the current directory
+    // check read permision
+    if ((targetEntry.access_rights & READ) == 0) {
+        std::cerr << "Error: No read permission.\n";
+        return -1;
+    }
+
+    // Update current directory block number
+    this->currentDir = targetEntry.first_blk;
+    if (dirpath == "..") {
+        this->currentPath.pop_back();
+    } else {
+        this->currentPath.push_back(targetEntry.file_name);
+    }
     return 0;
 }
 
@@ -641,8 +635,11 @@ FS::cd(std::string dirpath)
 int
 FS::pwd()
 {
-    std::cout << "FS::pwd()\n";
-
+    for (auto &&i : this->currentPath)
+    {
+        std::cout << "/" << i;
+    }
+    std::cout << std::endl;
     return 0;
 }
 

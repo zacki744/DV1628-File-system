@@ -42,12 +42,14 @@ private:
     FATEntry fat[MAX_BLOCKS]; // FAT table
     //working directory
     FATEntry currentDir;
-        //Helpers
+    // path
+    std::vector<std::string> currentPath;
+    //Helpers
     bool readBlock(size_t blockNum, void* buffer);
     bool writeBlock(size_t blockNum, const void* buffer);
     std::vector<FATEntry> freeFATEntries(uint8_t size);
     int findDirEntry(dir_entry* dirTable, dir_entry& destEntry, const std::string& dirpath);
-    int mvDir(const std::string& sourcepath, const std::string& destpath, dir_entry* dir, dir_entry* destDir);
+    int mvDir(const std::string& sourcepath, const std::string& destpath, dir_entry* dir, uint16_t index);
     int mvFile(const std::string& sourcepath, const std::string& destpath, dir_entry* dir);
     void writePagesToFat(const size_t totalSize, const std::string content, const std::vector<FATEntry> freeEntries);
     bool createDirEntry(dir_entry* dirEntries, dir_entry*& newEntry, const std::string& fileName);
