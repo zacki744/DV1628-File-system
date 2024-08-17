@@ -46,12 +46,13 @@ private:
     bool readBlock(size_t blockNum, void* buffer);
     bool writeBlock(size_t blockNum, const void* buffer);
     std::vector<FATEntry> freeFATEntries(uint8_t size);
-    bool findDirEntry(dir_entry* dirTable, dir_entry& destEntry, const std::string& dirpath);
-    int mv_dir(const std::string& sourcepath, const std::string& destpath, dir_entry* dir);
-    int mv_file(const std::string& sourcepath, const std::string& destpath, dir_entry* dir);
+    int findDirEntry(dir_entry* dirTable, dir_entry& destEntry, const std::string& dirpath);
+    int mvDir(const std::string& sourcepath, const std::string& destpath, dir_entry* dir, dir_entry* destDir);
+    int mvFile(const std::string& sourcepath, const std::string& destpath, dir_entry* dir);
+    void writePagesToFat(const size_t totalSize, const std::string content, const std::vector<FATEntry> freeEntries);
+    bool createDirEntry(dir_entry* dirEntries, dir_entry*& newEntry, const std::string& fileName);
 
 public:
-    dir_entry find_dir_block(const std::string &filepath);
     //assigment funks
     FS();
     ~FS();
