@@ -77,8 +77,7 @@ int FS::resolvePath(const std::string& path) {
                 }
             }
             if (!found) {
-                std::cerr << "Error: Directory not found.\n";
-                return ROOT_BLOCK;
+                return this->currentDir;
             }
         }
     }
@@ -87,12 +86,9 @@ int FS::resolvePath(const std::string& path) {
     return currentBlock;
 }
 
-
-
-
-
 // Check if the entry has the required permissions
 bool FS::hasPermission(const dir_entry& entry, uint8_t requiredRights) const {
+    //acces rights are stored as a bitfield, 0x04 = read, 0x02 = write, 0x01 = execute
     return (entry.access_rights & requiredRights) == requiredRights;
 }
 
@@ -257,18 +253,28 @@ int FS::create(std::string filepath) {
     std::vector<FATEntry> freeEntries = {};
     dir_entry* newEntry = nullptr;
     size_t pos = filepath.find_last_of("/");
-    std::string dirPath = filepath.substr(0, pos);  // Directory path
-    std::string fileName = filepath.substr(pos + 1);  // File name
+    uint8_t block[BLOCK_SIZE] = { 0 };
+    dir_entry* dirEntries = nullptr;
+    std::string fileName;
+    int blk = currentDir;
+    if(pos != std::string::npos) {
+        std::string dirPath = filepath.substr(0, pos);  // Directory path
+        fileName = filepath.substr(pos + 1);  // File name
+        blk = resolvePath(dirPath);
+        readBlock(blk, block);
+        dirEntries = reinterpret_cast<dir_entry*>(block);
+    }
+    else {
+        fileName = filepath;
+        readBlock(this->currentDir, block);
+        dirEntries = reinterpret_cast<dir_entry*>(block);
+    }
+
 
     if (fileName.size() > 55) {
         std::cerr << "Error: Invalid file name.\n";
         return -1;
     }
-    uint8_t block[BLOCK_SIZE] = { 0 };
-    dir_entry* dirEntries = nullptr;
-    int blk = resolvePath(dirPath);
-    readBlock(blk, block);
-    dirEntries = reinterpret_cast<dir_entry*>(block);
 
     // Capture the file content from user input
     while (true) {
@@ -422,7 +428,6 @@ FS::cp(std::string sourcepath, std::string destpath) //currently only working in
         //copy file to dir
         return cpDir(sourcepath, destpath, dirEntries, dsindex);
     }
-    //get the required fatentries
     for (auto i = sourceEntry.first_blk; i != EOF && i != FAT_EOF; i = fat[i])
     {
         readBlock(i, tmpBlk);
@@ -441,11 +446,12 @@ FS::cp(std::string sourcepath, std::string destpath) //currently only working in
         return -1;
     }
     //rw permision form src file check
-    if (hasPermission(sourceEntry, READ|WRITE)) {
+    printf("sourceEntry.access_rights: %d\n", sourceEntry.access_rights);
+    printf("sorce name: %s\n", sourceEntry.file_name);
+    if (!hasPermission(sourceEntry, READ)) {
         std::cerr << "Error: No read/write permission.\n";
         return -1;
     }
-
     // Fill in the new file entry
     std::strncpy(newEntry->file_name, destpath.c_str(), sizeof(newEntry->file_name) - 1);
     newEntry->file_name[sizeof(newEntry->file_name) - 1] = '\0'; // Null-terminate
@@ -643,7 +649,7 @@ int FS::append(std::string filepath1, std::string filepath2) {
         destIndex = findDirEntry(dirEntries, destEntry, filepath2);
     }
     // Check if the file is a file
-    if(!isFile(sourceEntry) || hasPermission(sourceEntry, READ|WRITE)) {
+    if(!isFile(sourceEntry) || !hasPermission(sourceEntry, READ|WRITE)) {
         std::cerr << "Error.\n";
         return -1;
     }
@@ -750,6 +756,7 @@ FS::cd(std::string dirpath)
 {
     // Read the current directory block
     uint8_t block[BLOCK_SIZE] = { 0 };
+    int blk = resolvePath(dirpath);
     readBlock(this->currentDir, block);
     dir_entry* dirEntries = reinterpret_cast<dir_entry*>(block);
 
@@ -759,8 +766,17 @@ FS::cd(std::string dirpath)
         std::cerr << "Error: Directory not found.\n";
         return -1;
     }
+    if(targetEntry.first_blk == this->currentDir) {
+        std::cerr << "Error: Already in the directory.\n";
+        return -1;
+    }
+    // check if trying to navigate to root
+    if(currentDir == ROOT_BLOCK && dirpath == "..") {
+        std::cerr << "Error: Already in the root directory.\n";
+        return -1;
+    }
     // Check if the entry is a directory and has read permission
-    if(!isDirectory(targetEntry) || !hasPermission(targetEntry, READ)) {
+    if(!isDirectory(targetEntry) || !hasPermission(targetEntry, READ|EXECUTE)) {
         std::cerr << "Error.\n";
         return -1;
     }
