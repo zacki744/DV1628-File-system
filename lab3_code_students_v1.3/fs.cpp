@@ -1,6 +1,5 @@
 #include "fs.h"
 #include <sstream>
-
 #include <vector>
 #include <string>
 
@@ -31,54 +30,39 @@ std::vector<std::string> splitPath(const std::string& path) {
 // use block pointer to put the block in the path dir thets potentioly pointed to in path
 // Resolve path to a directory block
 int FS::resolvePath(const std::string& path) {
-    uint8_t block[BLOCK_SIZE] = {0};
+    dir_entry destEntry;
     std::vector<std::string> components = splitPath(path);
-    uint8_t currentBlock = ROOT_BLOCK;
+    uint8_t currentBlock = this->currentDir;
     dir_entry* dirEntries = nullptr;
     //if singel level, use current dir
     if (components.size() == 0) {
         return this->currentDir;
     }
-
     for (const std::string& component : components) {
-        printf("component: %s\n", component.c_str());
-
-        // Read the current directory block
+        uint8_t block[BLOCK_SIZE] = {0};
         readBlock(currentBlock, block);
         dirEntries = reinterpret_cast<dir_entry*>(block);
-
         if (component == "..") {
             // Handle moving up one directory
             if (currentBlock == ROOT_BLOCK) {
                 std::cerr << "Error: Already at root directory.\n";
                 return ROOT_BLOCK;
             }
-
-            bool parentFound = false;
-            for (size_t i = 0; i < BLOCK_SIZE / sizeof(dir_entry); ++i) {
-                if (dirEntries[i].type == TYPE_DIR && strcmp(dirEntries[i].file_name, "..") == 0) {
-                    currentBlock = dirEntries[i].first_blk;
-                    parentFound = true;
-                    break;
-                }
-            }
-            if (!parentFound) {
-                std::cerr << "Error: Parent directory not found.\n";
-                return ROOT_BLOCK;
-            }
+            currentBlock = dirEntries[1].first_blk;
         } else {
             // Find the directory entry
-            bool found = false;
-            for (size_t i = 0; i < BLOCK_SIZE / sizeof(dir_entry); ++i) {
-                if (strcmp(dirEntries[i].file_name, component.c_str()) == 0 && dirEntries[i].type == TYPE_DIR) {
-                    currentBlock = dirEntries[i].first_blk;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
+            int dirEntryIndex = findDirEntry(dirEntries, destEntry, component);
+            printf("dirEntryIndex: %d\n", dirEntryIndex);
+            if (!dirEntryIndex) {
+                // Directory not found
+                std::cerr << "Error: Directory not found.\n";
                 return this->currentDir;
             }
+            if(!isDirectory(destEntry) || !hasPermission(destEntry, READ|EXECUTE)) {
+                std::cerr << "Error: Not a directory.\n";
+                return this->currentDir;
+            }
+            currentBlock = dirEntries[dirEntryIndex].first_blk;
         }
     }
 
