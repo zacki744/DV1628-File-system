@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <string>
+#include <cctype>
 
 #ifndef __FS_H__
 #define __FS_H__
@@ -12,7 +13,7 @@
 #define ROOT_BLOCK 0
 #define FAT_BLOCK 1
 #define FAT_FREE 0
-#define FAT_EOF 65535 // 0xFFFF, end of file marker in FAT table (Since uint16_t cannot represent -1)
+#define FAT_EOF 0xFFFF // 0xFFFF, end of file marker in FAT table (Since uint16_t cannot represent -1)
 
 #define TYPE_FILE 0
 #define TYPE_DIR 1
@@ -53,7 +54,14 @@ private:
     int mvFile(const std::string& sourcepath, const std::string& destpath, dir_entry* dir);
     void writePagesToFat(const size_t totalSize, const std::string content, const std::vector<FATEntry> freeEntries);
     bool createDirEntry(dir_entry* dirEntries, dir_entry*& newEntry, const std::string& fileName);
-    std::string accessRightsToString(uint8_t accessRights);
+    bool isValidEntry(const dir_entry& entry) const;
+    std::string accessRightsToString(uint8_t accessRights) const;
+    int cpDir(const std::string& sourcepath, const std::string& destpath, dir_entry* dir, uint16_t index);
+    bool hasPermission(const dir_entry& entry, uint8_t requiredRights) const;
+    bool isDirectory(const dir_entry& entry) const;
+    bool isFile(const dir_entry& entry) const;
+    int resolvePath(const std::string& path);
+    std::string filePath(dir_entry* dirEntries, const std::string& fileName);
 
 public:
     //assigment funks
