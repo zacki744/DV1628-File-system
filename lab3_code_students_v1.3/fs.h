@@ -50,18 +50,15 @@ private:
     bool writeBlock(size_t blockNum, const void* buffer);
     std::vector<FATEntry> freeFATEntries(uint8_t size);
     int findDirEntry(dir_entry* dirTable, dir_entry& destEntry, const std::string& dirpath);
-    int mvDir(const std::string& sourcepath, const std::string& destpath, dir_entry* dir, uint16_t index);
-    int mvFile(const std::string& sourcepath, const std::string& destpath, dir_entry* dir);
     void writePagesToFat(const size_t totalSize, const std::string content, const std::vector<FATEntry> freeEntries);
     bool createDirEntry(dir_entry* dirEntries, dir_entry*& newEntry, const std::string& fileName);
     bool isValidEntry(const dir_entry& entry) const;
     std::string accessRightsToString(uint8_t accessRights) const;
-    int cpDir(const std::string& sourcepath, const std::string& destpath, dir_entry* dir, uint16_t index);
     bool hasPermission(const dir_entry& entry, uint8_t requiredRights) const;
     bool isDirectory(const dir_entry& entry) const;
     bool isFile(const dir_entry& entry) const;
     int resolvePath(const std::string& path);
-    std::string filePath(dir_entry* dirEntries, const std::string& fileName);
+    std::vector<std::string> splitPath(const std::string& path);
 
 public:
     //assigment funks
