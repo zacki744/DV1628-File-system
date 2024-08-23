@@ -35,6 +35,12 @@ struct dir_entry {
     uint8_t type; // directory (1) or file (0)
     uint8_t access_rights; // read (0x04), write (0x02), execute (0x01)
 };
+struct PathResult {
+    FATEntry block;          // The block where the directory or file is located
+    bool isDirectory;        // Whether the path is a directory
+    dir_entry entry;         // The directory entry for the file, if it's a file
+    bool found;              // Whether the file or directory was found
+};
 
 class FS {
 private:
@@ -57,7 +63,7 @@ private:
     bool hasPermission(const dir_entry& entry, uint8_t requiredRights) const;
     bool isDirectory(const dir_entry& entry) const;
     bool isFile(const dir_entry& entry) const;
-    int resolvePath(const std::string& path);
+    PathResult resolvePath(const std::string& path);
     std::vector<std::string> splitPath(const std::string& path);
 
 public:

@@ -7,7 +7,7 @@ filesystem: main.o shell.o fs.o disk.o
 	$(GCC) -std=c++11 -o filesystem main.o shell.o disk.o fs.o
 
 main.o: main.cpp shell.h disk.h
-	$(GCC) -std=c++11 -O2 -c main.cpp
+	$(GCC) -g -fstack-protector-all -std=c++11 -O2 -c main.cpp
 
 shell.o: shell.cpp shell.h fs.h disk.h
 	$(GCC) -std=c++11 -O2 -c shell.cpp
@@ -37,7 +37,7 @@ test: main.o test_script.o fs.o disk.o
 	$(GCC) -std=c++11 -o test_script main.o test_script.o disk.o fs.o
 
 test1: main.o test_script1.o fs.o disk.o
-	$(GCC) -std=c++11 -o test1 main.o test_script1.o disk.o fs.o
+	$(GCC) -g -fstack-protector-all -std=c++11 -o test1 main.o test_script1.o disk.o fs.o
 
 test2: main.o test_script2.o fs.o disk.o
 	$(GCC) -std=c++11 -o test2 main.o test_script2.o disk.o fs.o
