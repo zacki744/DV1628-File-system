@@ -410,7 +410,6 @@ FS::cp(std::string sourcepath, std::string destpath) //currently only working in
     newEntry->size = blk.entry.size;
     newEntry->type = TYPE_FILE;
     newEntry->access_rights = blk.entry.access_rights;   
-    printf("name: %s, firstblk: %d, dest blk: %d, access: %d\n", newEntry->file_name, newEntry->first_blk, destDirEntries[0].first_blk, newEntry->access_rights); 
     writePagesToFat(blk.entry.size, file1Content, freeEntries);
     writeBlock(destDirEntries[0].first_blk, (uint8_t*)destDirEntries);
     return 0;
@@ -768,9 +767,8 @@ FS::cd(std::string dirpath)
         return -1;
     }
     this->currentDir = dirEntries[0].first_blk;
-    if (dirpath[0] == '/') {
-        this->currentPath = path;
-        return 0;
+    if (dirpath[0] == '/') { //absolut path redirect
+        this->currentPath.clear();
     }
     for (auto &&i : path)
     {

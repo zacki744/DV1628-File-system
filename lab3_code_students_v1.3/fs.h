@@ -28,6 +28,7 @@
 // Define FAT entry type
 using FATEntry = uint16_t;
 
+
 struct dir_entry {
     char file_name[56]; // name of the file / sub-directory
     uint32_t size; // size of the file in bytes
@@ -35,6 +36,8 @@ struct dir_entry {
     uint8_t type; // directory (1) or file (0)
     uint8_t access_rights; // read (0x04), write (0x02), execute (0x01)
 };
+
+
 struct PathResult {
     FATEntry block;          // The block where the directory or file is located
     bool isDirectory;        // Whether the path is a directory
