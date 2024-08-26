@@ -574,6 +574,7 @@ int FS::append(std::string filepath1, std::string filepath2) {
         content += line;
         totalSize += line.length() + 1; // +1 for the newline character
     }
+    totalSize -= 1; // Remove the last newline character
     // Find free FAT entries for the file
     std::vector<FATEntry> freeEntries = freeFATEntries(((content.length() + BLOCK_SIZE - 1) / BLOCK_SIZE));
     if (freeEntries.size() < ((content.length() + BLOCK_SIZE - 1) / BLOCK_SIZE)) {
@@ -592,7 +593,7 @@ int FS::append(std::string filepath1, std::string filepath2) {
             return -1;
         }
         newEntry->first_blk = freeEntries[0];
-        newEntry->size = totalSize;
+        newEntry->size = totalSize++;
         newEntry->type = TYPE_FILE;
         newEntry->access_rights = sourceEntry.access_rights;
         std::strncpy(newEntry->file_name, name2.c_str(), sizeof(newEntry->file_name) - 1);
